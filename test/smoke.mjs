@@ -555,10 +555,16 @@ assert.equal(listRuns(wsD, ".dsh-subagents").find((record) => record.taskId === 
 const ctxS = makeCtx();
 apply(ctxS, { provider: "spawn", toolName: "subagent_status_host", backgroundMode: "continuable", maxDepth: 3 });
 const roster = ctxS.state.registrations.find((definition) => definition.name === "subagent_status") ?? ctx.state.registrations.find((definition) => definition.name === "subagent_status");
+// add a still-running record so the roster must render a sane "started …s ago"
+await createRun(wsC, ".dsh-subagents", { runId: "r-live", kind: "continuable", label: "live", taskId: "t-live" });
 const rosterValue = await roster.execute({}, exec2);
 assert.match(rosterValue.text, /Subagent runs in/);
 assert.match(rosterValue.text, /t-a/); // records from wsC
 assert.match(rosterValue.text, /\[completed\]/);
+// regression: ages must be seconds, never raw epoch timestamps (v0.3.1 bug —
+// running records carry tsSettled === 0, which `??` does not skip)
+assert.doesNotMatch(rosterValue.text, /\d{10}s ago/);
+assert.match(rosterValue.text, /started \d+s ago/);
 
 // ── memory-only mode (stateDir: "") never touches the workspace ──────────────
 
