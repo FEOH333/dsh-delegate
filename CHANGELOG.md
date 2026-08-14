@@ -2,6 +2,12 @@
 
 本文件记录 dsh-delegate（npm 包名 `dsh-tool-subagent-model`）的版本历史与工程教训。
 
+## 0.3.3
+
+- **feat**：模型来源标注——注册表记录新增 `modelSource`（`arg` 显式指定 / `default` 默认值 / `inherited` 继承主模型），花名册与对话流卡片直接显示"这条为什么是这个模型"；审计事件同步携带。
+- **feat**：锁定默认模型——行配置 `lockDefaultModel` 与设置卡片开关（任一生效）：开启且配置了默认模型时，每次调用指定的 `model` 被忽略、强制使用默认值；工具结果带 `note` 提示"model locked to default"。
+- 输出形状向后兼容地新增可选 `note` 字段（原字段不变）。
+
 ## 0.3.2
 
 - **fix**：`subagent_status` 花名册的耗时显示错误——running 记录的 `tsSettled` 为 `0`，而 `??` 只跳过 `null`/`undefined`，导致显示 `started <epoch>s ago` 这种天文数字。改为按状态取正确锚点（running → `tsCreated`，其余 → `tsSettled`）。
