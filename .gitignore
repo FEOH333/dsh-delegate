@@ -1,0 +1,14 @@
+# dependencies (linked from the dsh profile during local development)
+node_modules/
+
+# local backups and crash artifacts
+*.bak
+*.tmp-*
+
+# per-workspace run registry (runtime data, never committed)
+.dsh-subagents/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log
