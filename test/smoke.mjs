@@ -243,13 +243,16 @@ assert.equal(ctx.state.starts[0].request.maxDepth, 3);
 assert.ok(!("persona" in ctx.state.starts[0].request), "no persona when omitted");
 // the foreground settle landed in the registry (awaited before returning)
 assert.equal(listRuns(parent.session.header.cwd, ".dsh-subagents").at(-1).status, "completed");
+assert.equal(listRuns(parent.session.header.cwd, ".dsh-subagents").at(-1).modelSource, "arg");
 // and the audit trail carries the lifecycle pair
 assert.ok(appendedEvents.some((entry) => entry.type === "subagent-model/run-started"));
 assert.ok(appendedEvents.some((entry) => entry.type === "subagent-model/run-settled" && entry.data.status === "completed"));
+assert.ok(appendedEvents.some((entry) => entry.type === "subagent-model/run-started" && entry.data.modelSource === "arg"));
 
 // omit model -> inherit parent's model, parent's provider
 await def.execute({ description: "inherit", prompt: "task", run_in_background: false }, exec);
 assert.deepEqual(ctx.state.starts[1].request.agentOptions, { provider: "provider-a", model: "model-fast" });
+assert.equal(listRuns(parent.session.header.cwd, ".dsh-subagents").at(-1).modelSource, "inherited");
 
 // persona passes through when the provider supports it
 await def.execute({ description: "persona", prompt: "task", persona: "You are a reviewer", run_in_background: false }, exec);
@@ -364,10 +367,25 @@ assert.equal(verdict.ok, true);
 
 // unset fields normalize to null (null accepted on every field, incl. defaultModel)
 verdict = validateUserConfigPatch({ defaultModel: null, defaultMaxTokens: null, maxDepth: "" }, ["model-fast"]);
-assert.deepEqual(verdict.config, { defaultModel: null, defaultMaxTokens: null, maxDepth: null });
+assert.deepEqual(verdict.config, { defaultModel: null, defaultMaxTokens: null, maxDepth: null, lockDefaultModel: null });
 verdict = validateUserConfigPatch({ defaultModel: "", defaultMaxTokens: null, maxDepth: "" }, ["model-fast"]);
-assert.deepEqual(verdict.config, { defaultModel: null, defaultMaxTokens: null, maxDepth: null });
+assert.deepEqual(verdict.config, { defaultModel: null, defaultMaxTokens: null, maxDepth: null, lockDefaultModel: null });
 writeUserConfig(verdict.config);
+
+// lockDefaultModel validation + round trip
+verdict = validateUserConfigPatch({ lockDefaultModel: true }, ["model-fast"]);
+assert.equal(verdict.ok, true);
+assert.equal(verdict.config.lockDefaultModel, true);
+verdict = validateUserConfigPatch({ lockDefaultModel: false }, ["model-fast"]);
+assert.equal(verdict.ok, true);
+assert.equal(verdict.config.lockDefaultModel, false);
+verdict = validateUserConfigPatch({ lockDefaultModel: "yes" }, ["model-fast"]);
+assert.equal(verdict.ok, false);
+assert.match(verdict.error, /boolean/);
+writeUserConfig({ defaultModel: null, defaultMaxTokens: null, maxDepth: null, lockDefaultModel: true });
+assert.deepEqual(readUserConfig(), { lockDefaultModel: true });
+writeUserConfig({ defaultModel: null, defaultMaxTokens: null, maxDepth: null, lockDefaultModel: null });
+assert.deepEqual(readUserConfig(), {});
 
 // route fixtures
 function fakeRes() {
@@ -408,9 +426,9 @@ assert.deepEqual(JSON.parse(res.body).config, {});
 
 // POST valid (loopback + same origin)
 res = fakeRes();
-await routes[0].handler(fakeReq({ method: "POST", headers: { origin: "http://127.0.0.1:3080" }, body: JSON.stringify({ defaultModel: "model-pro", defaultMaxTokens: 1000, maxDepth: 1 }) }), res);
+await routes[0].handler(fakeReq({ method: "POST", headers: { origin: "http://127.0.0.1:3080" }, body: JSON.stringify({ defaultModel: "model-pro", defaultMaxTokens: 1000, maxDepth: 1, lockDefaultModel: true }) }), res);
 assert.equal(res.status, 200);
-assert.deepEqual(JSON.parse(res.body).config, { defaultModel: "model-pro", defaultMaxTokens: 1000, maxDepth: 1 });
+assert.deepEqual(JSON.parse(res.body).config, { defaultModel: "model-pro", defaultMaxTokens: 1000, maxDepth: 1, lockDefaultModel: true });
 
 // POST invalid model -> 400
 res = fakeRes();
@@ -436,10 +454,27 @@ apply(ctxU, { provider: "spawn", toolName: "subagent_user", backgroundMode: "con
 await ctxU.state.registrations[0].execute({ description: "ud", prompt: "task", run_in_background: false }, exec);
 assert.deepEqual(ctxU.state.starts.at(-1).request.agentOptions, { provider: "provider-a", model: "model-pro", maxTokens: 777 });
 assert.equal(ctxU.state.starts.at(-1).request.maxDepth, 1);
+assert.equal(listRuns(wsA, ".dsh-subagents").at(-1).modelSource, "default");
 // per-call arguments still win over user defaults
 await ctxU.state.registrations[0].execute({ description: "ud2", prompt: "task", model: "model-fast", max_tokens: 99, run_in_background: false }, exec);
 assert.deepEqual(ctxU.state.starts.at(-1).request.agentOptions, { provider: "provider-a", model: "model-fast", maxTokens: 99 });
 assert.equal(ctxU.state.starts.at(-1).request.maxDepth, 1);
+assert.equal(listRuns(wsA, ".dsh-subagents").at(-1).modelSource, "arg");
+
+// ── locked default model: per-call model is ignored ──────────────────────────
+
+writeUserConfig({ defaultModel: "model-pro", defaultMaxTokens: null, maxDepth: null, lockDefaultModel: true });
+const lockedResult = await ctxU.state.registrations[0].execute({ description: "locked", prompt: "task", model: "model-fast", run_in_background: false }, exec);
+assert.equal(lockedResult.kind, "foreground");
+assert.deepEqual(ctxU.state.starts.at(-1).request.agentOptions, { provider: "provider-a", model: "model-pro" });
+assert.match(lockedResult.note, /locked to default/);
+assert.equal(listRuns(wsA, ".dsh-subagents").at(-1).modelSource, "default");
+// row-level lock is advertised in the tool description
+const ctxL = makeCtx();
+apply(ctxL, { provider: "spawn", toolName: "subagent_locked", backgroundMode: "continuable", maxDepth: 3, lockDefaultModel: true });
+assert.match(ctxL.state.registrations[0].description, /LOCKED/);
+// clear the lock + defaults for the remaining sections
+writeUserConfig({ defaultModel: null, defaultMaxTokens: null, maxDepth: null, lockDefaultModel: null });
 
 // routes were registered through ctx.webServer
 assert.equal(ctxU.state.routes.length, 3);
@@ -561,6 +596,9 @@ const rosterValue = await roster.execute({}, exec2);
 assert.match(rosterValue.text, /Subagent runs in/);
 assert.match(rosterValue.text, /t-a/); // records from wsC
 assert.match(rosterValue.text, /\[completed\]/);
+// model provenance is visible in the roster (user config was cleared, so the
+// gating-section records inherit the parent's model)
+assert.match(rosterValue.text, /\(inherited\)/);
 // regression: ages must be seconds, never raw epoch timestamps (v0.3.1 bug —
 // running records carry tsSettled === 0, which `??` does not skip)
 assert.doesNotMatch(rosterValue.text, /\d{10}s ago/);

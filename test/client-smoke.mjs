@@ -53,6 +53,9 @@ const stubs = {
 		register: (ns, dictionaries) => {
 			assert.equal(ns, "subagent-model");
 			assert.ok(dictionaries.zh && dictionaries.en);
+			// v0.3.3 keys exist in both dictionaries
+			assert.ok(dictionaries.zh.lockDefaultModel && dictionaries.en.lockDefaultModel);
+			assert.ok(dictionaries.zh.srcArg && dictionaries.zh.srcDefault && dictionaries.zh.srcInherited);
 		}
 	},
 	slots: {
