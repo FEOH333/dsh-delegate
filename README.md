@@ -4,7 +4,7 @@
 >
 > Model-aware subagent delegation for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): per-call models, dependency gating, personas, a durable run roster, audit events, and conversation-flow tool cards.
 
-[![version](https://img.shields.io/badge/version-0.3.1-blue)](package.json)
+[![version](https://img.shields.io/badge/version-0.3.3-blue)](package.json)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![topic: dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-9cf)](https://github.com/topics/dsh-plugin)
 
@@ -25,7 +25,9 @@
 
 ## ✨ 功能一览
 
-- **按次选模型**：`model` 参数枚举来自 Web「模型」页的模型目录，`provider` 自动路由（优先主 agent 路由，唯一路由自动选中，多路由歧义时显式报错并列出选项）；模型列表随设置热更新。
+- **按次选模型**：`model` 参数枚举来自 Web「模型」页的模型目录，`provider` 自动路由（优先主 agent 路由，唯一路由自动选中，多路由歧义时显式报错并列出选项）；模型列表随设置热更新。优先级：调用参数 > 设置默认值 > 继承主模型。
+- **模型来源标注**（v0.3.3+）：花名册与对话流卡片直接标注每条委派的模型来源（`arg` 显式指定 / `default` 默认值 / `inherited` 继承），一眼看出"为什么是这个模型"。
+- **锁定默认模型**（v0.3.3+）：设置卡片开关或行配置 `lockDefaultModel`——开启且配置了默认模型时，忽略每次调用指定的 `model`，强制使用默认值（结果会带 `note` 提示）。
 - **依赖门控**：`task_id` 命名一次委派，`depends_on` 声明依赖——依赖未满足时工具**拒绝启动**并列出未满足项（含当前状态），把"按顺序执行"变成确定性约束。
 - **角色人设**：`persona` 参数给子代理注入自定义人设，随子代理 descriptor 持久化，冷恢复时重新应用。
 - **任务花名册**：`subagent_status` 工具输出当前工作区的全部委派记录（task_id / 状态 / 模型 / 驻留活动 / 依赖链 / 结果摘要）。
@@ -83,7 +85,7 @@ dsh plugin --profile web add github:FEOH333/dsh-delegate
 | 参数 | 说明 |
 |---|---|
 | `description` / `prompt` / `run_in_background` | 与官方 `subagent` 工具语义一致 |
-| `model`（可选）| 子代理模型 id（枚举来自模型页）；省略 → 设置卡片默认值 → 继承主 agent 模型 |
+| `model`（可选）| 子代理模型 id（枚举来自模型页）；省略 → 设置卡片默认值 → 继承主 agent 模型；锁定默认模型开启且默认值存在时，此参数被忽略 |
 | `provider`（可选）| 提供商路由；省略时自动解析（优先当前路由 → 唯一路由 → 歧义报错列出选项） |
 | `max_tokens`（可选）| 子代理最大输出 token；省略 → 设置卡片默认值 |
 | `task_id`（可选）| 给本次委派起名（如 `t-research`）；省略时等于 run id；其他委派可用它做 `depends_on` |
@@ -115,7 +117,7 @@ subagent_status()   # 查看所有委派的状态与 task_id
 
 ### 注册表文件
 
-每次委派追加一条记录到 `<workspace>/.dsh-subagents/runs.jsonl`（追加式 JSONL，按 runId last-write-wins 折叠，超 400 行自动压缩为"活跃 + 近期终态"）。目录名可用 `stateDir` 配置；`stateDir: ""` 为纯内存模式，不写任何文件。多进程同时写同一工作区不保证一致（单 dsh 进程内已用 promise 链锁串行化）。
+每次委派追加一条记录到 `<workspace>/.dsh-subagents/runs.jsonl`（追加式 JSONL，按 runId last-write-wins 折叠，超 400 行自动压缩为"活跃 + 近期终态"）。每条记录含 `modelSource`（模型来源：`arg` / `default` / `inherited`）。目录名可用 `stateDir` 配置；`stateDir: ""` 为纯内存模式，不写任何文件。多进程同时写同一工作区不保证一致（单 dsh 进程内已用 promise 链锁串行化）。
 
 ## ⚙️ 配置项（每个实例）
 
@@ -128,11 +130,12 @@ subagent_status()   # 查看所有委派的状态与 task_id
 | `stateDir` | `.dsh-subagents` | 注册表目录名（工作区下）；`""` = 纯内存跟踪 |
 | `statusToolName` | `subagent_status` | 花名册工具名；`""` 禁用；进程内只注册一次（首个实例生效） |
 | `trackRuns` | `true` | 总开关：`false` 完全关闭注册表 / 事件 / 门控 / 花名册，回到 v0.2.x 行为 |
+| `lockDefaultModel` | `false` | 锁定默认模型：开启且默认模型已配置时，忽略每次调用指定的 `model`（设置卡片开关与之等效，任一开启即生效） |
 
 ## 🖥️ Web UI
 
-- **设置卡片**（设置 → 插件 → 插件配置 → 子代理模型）：编辑省略参数时的默认值（默认模型 / 默认 max tokens / 委派深度上限）。数据走插件自己的 `/api/subagent-model/*` 路由，写路由带 loopback + 同源信任围栏。
-- **委派卡片**：对话流中 `subagent_with_model` / `subagent_fork_with_model` 的工具调用渲染为状态卡（标签 / 模型 / 状态徽章 / task / 依赖 / 人设折叠 / 结果摘要 / 打开子会话），2.5s 轮询花名册路由，状态终态后自动停止。
+- **设置卡片**（设置 → 插件 → 插件配置 → 子代理模型）：编辑省略参数时的默认值（默认模型 / 默认 max tokens / 委派深度上限 / 锁定默认模型）。数据走插件自己的 `/api/subagent-model/*` 路由，写路由带 loopback + 同源信任围栏。
+- **委派卡片**：对话流中 `subagent_with_model` / `subagent_fork_with_model` 的工具调用渲染为状态卡（标签 / 模型 / 模型来源 / 状态徽章 / task / 依赖 / 人设折叠 / 结果摘要 / 打开子会话），2.5s 轮询花名册路由，状态终态后自动停止。
 - **花名册卡片**：`subagent_status` 工具调用渲染为实时表格视图。
 - 若未来 shell 缺少相关 slot / 服务，卡片自动降级（仅隐藏跳转按钮），不影响设置卡片。
 
@@ -221,6 +224,8 @@ node test/client-smoke.mjs
 `dsh-delegate` (npm package: `dsh-tool-subagent-model`) extends the official `subagent` / `subagent_fork` tools for DeepSeek Harness with:
 
 - **Per-call model choice** with automatic provider routing, sourced from the web Models page;
+- **Model provenance labels** (`arg` / `default` / `inherited`) in the roster and tool cards;
+- **Lockable default model** (Settings card switch or `lockDefaultModel` row config) that overrides per-call `model` when a default is configured;
 - **Dependency gating** via `task_id` / `depends_on` (deterministic ordering, refuses with the unsatisfied list);
 - **Per-child personas** (persisted and reapplied on continuable resume);
 - **A durable run roster** (`subagent_status` + `<workspace>/.dsh-subagents/runs.jsonl`) and typed audit events;
