@@ -2,6 +2,11 @@
 
 本文件记录 dsh-delegate（npm 包名 `dsh-tool-subagent-model`）的版本历史与工程教训。
 
+## 0.3.2
+
+- **fix**：`subagent_status` 花名册的耗时显示错误——running 记录的 `tsSettled` 为 `0`，而 `??` 只跳过 `null`/`undefined`，导致显示 `started <epoch>s ago` 这种天文数字。改为按状态取正确锚点（running → `tsCreated`，其余 → `tsSettled`）。
+- **test**：新增回归断言（花名册输出不允许出现 10 位数字的"秒数"）。
+
 ## 0.3.1
 
 - **fix**：修复客户端 `apply()` 读取 `ctx.sessions` 但未在 `exports.inject` 声明导致的插件加载失败（`cannot get property "sessions" without inject`，Web 页面无法打开）。
