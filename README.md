@@ -4,7 +4,7 @@
 >
 > Model-aware subagent delegation for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): per-call models, dependency gating, personas, a durable run roster, audit events, and conversation-flow tool cards.
 
-[![version](https://img.shields.io/badge/version-0.3.5-blue)](package.json)
+[![version](https://img.shields.io/badge/version-0.3.6-blue)](package.json)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![topic: dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-9cf)](https://github.com/topics/dsh-plugin)
 
@@ -33,7 +33,7 @@
 - **任务花名册**：`subagent_status` 工具输出当前工作区的全部委派记录（task_id / 状态 / 模型 / 驻留活动 / 依赖链 / 结果摘要）。
 - **审计事件**：每次委派向会话日志追加 `subagent-model/run-started | run-settled` 事件（只进日志、不进模型历史），可审计、可复盘。
 - **对话流卡片**：浏览器端为委派工具渲染状态卡片（实时状态徽章、依赖、人设、结果摘要、一键打开子会话），为花名册工具渲染表格视图。
-- **设置卡片**：设置 → 插件 → 插件配置里编辑默认子代理模型 / 默认 max tokens / 委派深度上限 / 锁定默认模型。
+- **设置页签 + 卡片**：设置侧栏「子代理模型」独立页签（v0.3.6，`settings.section` 注册即渲染），以及插件配置页内的设置卡片（命名空间机制）——双保险，任一失效都不影响调整配置。
 - **总开关**：`trackRuns: false` 一键回到纯委派模式（v0.2.x 行为）。
 
 ## 📦 安装
@@ -134,10 +134,10 @@ subagent_status()   # 查看所有委派的状态与 task_id
 
 ## 🖥️ Web UI
 
-- **设置卡片**（设置 → 插件 → 插件配置 → 子代理模型）：编辑省略参数时的默认值（默认模型 / 默认 max tokens / 委派深度上限 / 锁定默认模型）。数据走插件自己的 `/api/subagent-model/*` 路由，写路由带 loopback + 同源信任围栏。
+- **设置页签 + 卡片**：设置侧栏「子代理模型」页签（模型页与插件页之间）与 设置 → 插件 → 插件配置卡片：编辑默认模型 / 默认 max tokens / 委派深度上限 / 锁定默认模型。数据走插件自己的 `/api/subagent-model/*` 路由，写路由带 loopback + 同源信任围栏。
 - **委派卡片**：对话流中 `subagent_with_model` / `subagent_fork_with_model` 的工具调用渲染为状态卡（标签 / 模型 / 模型来源 / 状态徽章 / task / 依赖 / 人设折叠 / 结果摘要 / 打开子会话），2.5s 轮询花名册路由，状态终态后自动停止。
 - **花名册卡片**：`subagent_status` 工具调用渲染为实时表格视图。
-- 若未来 shell 缺少相关 slot / 服务，卡片自动降级（仅隐藏跳转按钮），不影响设置卡片。
+- 若未来 shell 缺少相关 slot / 服务，卡片自动降级（仅隐藏跳转按钮），不影响设置页签。
 
 ## 🏗️ 工作原理
 
@@ -156,6 +156,7 @@ subagent_status()   # 查看所有委派的状态与 task_id
              └─ 干净收尾 → idle；异常 → failed/cancelled
 
 浏览器端（客户端半区）：
+  设置：settings.section 独立页签（list 槽，注册即渲染）+ settings.plugin.item 卡片（keyed，按设置命名空间分发）
   委派卡片 / 花名册卡片 ──2.5s 轮询──▶ GET /api/subagent-model/runs?cwd=&sessionId=
      （磁盘真相 + listChildren 实时驻留状态，只读）
 ```
@@ -163,18 +164,18 @@ subagent_status()   # 查看所有委派的状态与 task_id
 关键设计（详见源码注释）：
 
 - **咨询性**：注册表、事件、驻留查询都是咨询性路径，任何失败都降级（内存回退 / 跳过），**绝不打断委派**；只有显式 `depends_on` 把注册表当权威。
-- **single-flight 纪律**：插件按两个实例挂载（spawn + fork），进程级共享资源（路由族、花名册工具、`subagent/end` 监听器）都只注册一次。
+- **single-flight 纪律**：插件按两个实例挂载（spawn + fork），进程级共享资源（路由族、花名册工具、`subagent/end` 监听器、settings 命名空间）都只注册一次。
 - **注入纪律**：只访问 `inject` 声明的服务属性；可选服务一律 `ctx.get(...)` 并处理 `undefined`（v0.3.0 教训，见 CHANGELOG）。
 
 ## 🛡️ 兼容性设计（防 dsh 升级失效）
 
-> 当前要求 **dsh ≥ 0.1.1-rc.2**：`settings.plugin.item` 为 keyed 插槽（旧版按 `id` 注册的 list 槽已不存在，v0.3.4 起按新契约注册）。
+> 当前要求 **dsh ≥ 0.1.1-rc.2**：`settings.plugin.item` 为 keyed 插槽（旧版按 `id` 注册的 list 槽已不存在，v0.3.4 起按新契约注册；`settings.section` 页签为 list 槽，v0.3.6 双保险）。
 
 1. **只用公开接缝**：`ctx.tools.register`、`ctx.subagents`（`start` / `startContinuable` / `listChildren` / `subagent/start|end` 事件）、`ctx.systemPrompt.section`、`ctx.settings`（可选读）、`ctx.webServer.register`、`Session.append`。不 import 内部模块。
 2. **依赖从宿主解析**：只声明 `peerDependencies`，运行时经 profile 的扁平 `node_modules` 解析到**当前安装的 dsh 自带版本**，不锁版本、不随包分发、不漂移。
 3. **镜像官方模式**：注册时机（provider 出现/移除）、前后台路由、stop-reason 处理、输出渲染与官方 `dsh-tool-subagent` 同构。
 4. **防御性解析**：设置节任何形状都不会让插件崩溃，最坏退化为继承行为。
-5. **客户端按能力探测**：toolview 卡片注册套 try/catch；设置卡片按 keyed 契约注册（自带 try/catch 防御），并在 host 注册 `subagent-model` 设置命名空间（新版插件配置页按命名空间分发卡片，v0.3.5）；`sessions` 服务走 `ctx.get()` 可选读取，缺失只隐藏"打开子会话"按钮。
+5. **客户端按能力探测**：toolview 卡片注册套 try/catch；设置卡片按 keyed 契约注册（自带 try/catch 防御），host 注册 `subagent-model` 设置命名空间（新版插件配置页按命名空间分发卡片，v0.3.5）；另有**独立设置页签**（`settings.section` list 槽，注册即渲染，v0.3.6 双保险）；`sessions` 服务走 `ctx.get()` 可选读取，缺失只隐藏"打开子会话"按钮。
 6. **失效方式明确**：接缝变更时加载 / 调用阶段报出可读错误，不静默出错。
 
 ## 🧪 开发与测试
@@ -182,13 +183,16 @@ subagent_status()   # 查看所有委派的状态与 task_id
 ```
 lib/
   index.js        宿主半区：工具注册、路由解析、执行流、end 监听、提示段
-  client.js       浏览器半区：设置卡片 + 三个 toolview 卡片（手写、无构建）
+  client.js       浏览器半区：设置页签 + 设置卡片 + 三个 toolview 卡片（手写、无构建）
+  settings-ns.js  设置命名空间注册（single-flight，v0.3.5）
   registry.js     运行注册表：JSONL 折叠、锁、压缩、内存回退
   status-tool.js  花名册工具（进程级 single-flight）
   events.js       会话审计事件（含失败遏制）
   routes.js       /api/subagent-model/* 路由族（single-flight + 信任围栏）
   config-store.js 用户默认值存储（原子写入，~/.dsh/subagent-model.json）
-test/
+scripts/
+  verify.mjs      一键验证：语法检查 + 两套冒烟测试
+  test/
   smoke.mjs       宿主冒烟测试（真实 dsh-tools schema 校验 + 注入纪律 Proxy mock）
   client-smoke.mjs 客户端冒烟测试（web shell 加载方式 + SSR 渲染）
 ```
@@ -200,6 +204,8 @@ test/
 # a) 把 $DSH_HOME/profiles/node_modules 链接为 node_modules（本地开发）
 # b) 在已安装 dsh 的 profile 环境里运行
 
+npm run verify   # 一键：语法检查 + 两套冒烟测试
+npm test         # 只跑两套冒烟测试
 node test/smoke.mjs
 node test/client-smoke.mjs
 ```
@@ -231,7 +237,7 @@ node test/client-smoke.mjs
 - **Dependency gating** via `task_id` / `depends_on` (deterministic ordering, refuses with the unsatisfied list);
 - **Per-child personas** (persisted and reapplied on continuable resume);
 - **A durable run roster** (`subagent_status` + `<workspace>/.dsh-subagents/runs.jsonl`) and typed audit events;
-- **Conversation-flow tool cards** (status badges, dependency detail, child-session navigation) plus a Settings card for defaults;
+- **Conversation-flow tool cards** (status badges, dependency detail, child-session navigation) plus a dedicated Settings page and a Settings card;
 - `trackRuns: false` restores plain delegation behavior.
 
 ```sh

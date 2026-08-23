@@ -2,6 +2,13 @@
 
 本文件记录 dsh-delegate（npm 包名 `dsh-tool-subagent-model`）的版本历史与工程教训。
 
+## 0.3.6
+
+- **feat（设置配置双保险）**：除命名空间卡片外，新增**独立设置页签**（`settings.section` list 槽，id `subagent-model`，位于「模型」与「插件」页之间）——该槽注册即渲染、不依赖 namespace describe 机制，设置侧栏直接出现「子代理模型」页。无论哪种机制生效都能在设置里调整。
+- **refactor**：settings 命名空间注册抽为独立模块 `lib/settings-ns.js`（入口模块 re-export，测试导入路径不变）。
+- **dev**：新增 `scripts/verify.mjs` 一键验证（逐文件语法检查 + 两套冒烟测试）与 `npm run test` / `npm run verify`。
+- **test**：`client-smoke.mjs` 覆盖 settings.section 注册（id/order/label thunk）与页面 SSR 渲染。
+
 ## 0.3.5
 
 - **fix（设置卡片真正可见）**：dsh 0.1.1 的「插件配置」页不再遍历 slot 占用表，而是按 **Host 服务的设置命名空间**逐个 dispatch `settings.plugin.item`（describe 与服务交集）。0.3.4 只修了注册形式（key 已进入占用表）但缺命名空间仍不渲染。本次在 host 注册 `subagent-model` 设置命名空间（官方 `installSettingsSection` + `settingsNamespace` 同构，single-flight，无 settings 服务的 headless profile 自动跳过）；配置数据仍走插件自己的 `/api/subagent-model` 路由与 `~/.dsh/subagent-model.json`，命名空间仅为呈现声明。
