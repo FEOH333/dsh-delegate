@@ -11,10 +11,18 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { dirname } from "node:path";
 
 const require = createRequire(import.meta.url);
-const React = require("react");
-const ReactDOMServer = require("react-dom/server");
+// The harness ships react@18 at the top level but react-dom only as nested
+// copies (react-dom@19 pairs with react@19 inside UI packages). SSR rendering
+// needs ONE consistent react/react-dom pair, so resolve both from the
+// react-dom location instead of letting `require("react")` grab the loose
+// top-level react@18 and mixing it with a different react-dom.
+const reactDomServerEntry = require.resolve("react-dom/server");
+const reactDomDir = dirname(dirname(reactDomServerEntry));
+const React = require(require.resolve("react", { paths: [reactDomDir] }));
+const ReactDOMServer = require(reactDomServerEntry);
 
 // ── load the bundle through the module-loader handoff ───────────────────────
 
@@ -83,10 +91,11 @@ mod.apply(ctx);
 assert.equal(registered.length, 4); // settings card + 3 toolview keys
 assert.equal(registered[0].name, "settings.plugin.item");
 const entry = registered[0].contribution();
+// settings.plugin.item is a KEYED slot since dsh 0.1.1-rc.2 — registration
+// carries `key`, never the old list-slot `id`/`order`/`locale` fields.
 assert.equal(entry.name, "settings.plugin.item");
-assert.equal(entry.id, "subagent-model");
-assert.equal(entry.order, 30);
-assert.equal(typeof entry.locale, "string");
+assert.equal(entry.key, "subagent-model");
+assert.equal(entry.id, undefined); // legacy list-slot field must be gone
 assert.equal(typeof entry.component, "function");
 
 // toolview keys claim exactly this plugin's tool names (open key domain)
