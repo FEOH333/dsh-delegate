@@ -14,6 +14,7 @@ import {
 	flattenProviders,
 	installEndListenerOnce,
 	resetEndListenerForTesting,
+	resetSettingsSectionForTesting,
 	resolveRoute,
 	sameEntries
 } from "../lib/index.js";
@@ -81,12 +82,19 @@ function makeCtx({ sectionRef = { current: initialSection }, jobRegistry = undef
 		continuables: [],
 		routes: [],
 		routeKeys: new Set(),
-		disposed: 0
+		disposed: 0,
+		injectCalls: [],
+		settingsRegistrations: []
 	};
 	const settings = { get: (ns) => (ns === "llm-pi-ai" ? sectionRef.current : undefined) };
 	const ctx = {
 		state,
 		get: (key) => (key === "settings" ? settings : key === "jobs" ? jobRegistry : undefined),
+		// cordis builtin: dependency injection (installSettingsSection uses it)
+		inject: (deps, callback) => {
+			state.injectCalls.push({ deps, callback });
+			return callback(ctx);
+		},
 		on: (event, fn) => {
 			if (!bus.has(event)) bus.set(event, []);
 			bus.get(event).push(fn);
@@ -136,6 +144,16 @@ function makeCtx({ sectionRef = { current: initialSection }, jobRegistry = undef
 				return { childId: "child-1", messageId: "msg-1" };
 			},
 			listChildren: async () => []
+		},
+		// the SettingsProvider face (installSettingsSection registers through it)
+		settings: {
+			register: (ns, schema, options) => {
+				state.settingsRegistrations.push({ ns, schema, options });
+				return {
+					get: () => ({}),
+					watch: () => () => {}
+				};
+			}
 		}
 	};
 	// Inject-discipline guard mirroring the real Cordis Proxy (host side):
@@ -207,10 +225,15 @@ assert.equal(sameEntries(flattenProviders(initialSection), [{ provider: "provide
 resetRegistryForTesting();
 resetStatusToolForTesting();
 resetEndListenerForTesting();
+resetSettingsSectionForTesting();
 const ctx = makeCtx();
 // the inject-discipline guard works — accessing an undeclared service throws
 assert.throws(() => ctx.agents, /cannot get property "agents" without inject/);
 apply(ctx, { provider: "spawn", toolName: "subagent_with_model", backgroundMode: "continuable", maxDepth: 3 });
+// the settings namespace was registered once (v0.3.5 card-visibility fix)
+assert.equal(ctx.state.settingsRegistrations.length, 1);
+assert.equal(ctx.state.settingsRegistrations[0].ns, "subagent-model");
+assert.ok(ctx.state.settingsRegistrations[0].options !== undefined);
 // delegation tool + shared roster tool (single-flight across rows)
 assert.equal(ctx.state.registrations.length, 2);
 const def = ctx.state.registrations.find((definition) => definition.name === "subagent_with_model");

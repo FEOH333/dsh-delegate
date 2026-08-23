@@ -4,7 +4,7 @@
 >
 > Model-aware subagent delegation for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): per-call models, dependency gating, personas, a durable run roster, audit events, and conversation-flow tool cards.
 
-[![version](https://img.shields.io/badge/version-0.3.4-blue)](package.json)
+[![version](https://img.shields.io/badge/version-0.3.5-blue)](package.json)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![topic: dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-9cf)](https://github.com/topics/dsh-plugin)
 
@@ -174,7 +174,7 @@ subagent_status()   # 查看所有委派的状态与 task_id
 2. **依赖从宿主解析**：只声明 `peerDependencies`，运行时经 profile 的扁平 `node_modules` 解析到**当前安装的 dsh 自带版本**，不锁版本、不随包分发、不漂移。
 3. **镜像官方模式**：注册时机（provider 出现/移除）、前后台路由、stop-reason 处理、输出渲染与官方 `dsh-tool-subagent` 同构。
 4. **防御性解析**：设置节任何形状都不会让插件崩溃，最坏退化为继承行为。
-5. **客户端按能力探测**：toolview 卡片注册套 try/catch；设置卡片按 keyed 契约注册（自带 try/catch 防御）；`sessions` 服务走 `ctx.get()` 可选读取，缺失只隐藏"打开子会话"按钮。
+5. **客户端按能力探测**：toolview 卡片注册套 try/catch；设置卡片按 keyed 契约注册（自带 try/catch 防御），并在 host 注册 `subagent-model` 设置命名空间（新版插件配置页按命名空间分发卡片，v0.3.5）；`sessions` 服务走 `ctx.get()` 可选读取，缺失只隐藏"打开子会话"按钮。
 6. **失效方式明确**：接缝变更时加载 / 调用阶段报出可读错误，不静默出错。
 
 ## 🧪 开发与测试

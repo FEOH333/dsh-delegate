@@ -2,6 +2,12 @@
 
 本文件记录 dsh-delegate（npm 包名 `dsh-tool-subagent-model`）的版本历史与工程教训。
 
+## 0.3.5
+
+- **fix（设置卡片真正可见）**：dsh 0.1.1 的「插件配置」页不再遍历 slot 占用表，而是按 **Host 服务的设置命名空间**逐个 dispatch `settings.plugin.item`（describe 与服务交集）。0.3.4 只修了注册形式（key 已进入占用表）但缺命名空间仍不渲染。本次在 host 注册 `subagent-model` 设置命名空间（官方 `installSettingsSection` + `settingsNamespace` 同构，single-flight，无 settings 服务的 headless profile 自动跳过）；配置数据仍走插件自己的 `/api/subagent-model` 路由与 `~/.dsh/subagent-model.json`，命名空间仅为呈现声明。
+- **deps**：新增 peer 依赖 `@deepseek-ai/dsh-settings`（由 dsh 自带，不锁版本）。
+- **test**：`smoke.mjs` mock 增加 `inject`/`settings.register` 面，断言命名空间注册恰一次且名为 `subagent-model`。
+
 ## 0.3.4
 
 - **fix（适配 dsh 0.1.1-rc.2）**：`settings.plugin.item` 插槽从 list（按 `id` 注册）改为 keyed（按 `key` 注册），旧式 `{ id, order, locale }` 注册导致设置 → 插件列表里卡片不再出现。改为 `{ name, key: "subagent-model" }` 注册（与官方 shell / agent-loop 卡片同构），并加 try/catch 防御。
