@@ -4,7 +4,7 @@
 >
 > Model-aware subagent delegation for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): per-call models, dependency gating, personas, a durable run roster, audit events, and conversation-flow tool cards.
 
-[![version](https://img.shields.io/badge/version-0.3.3-blue)](package.json)
+[![version](https://img.shields.io/badge/version-0.3.4-blue)](package.json)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![topic: dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-9cf)](https://github.com/topics/dsh-plugin)
 
@@ -33,12 +33,12 @@
 - **任务花名册**：`subagent_status` 工具输出当前工作区的全部委派记录（task_id / 状态 / 模型 / 驻留活动 / 依赖链 / 结果摘要）。
 - **审计事件**：每次委派向会话日志追加 `subagent-model/run-started | run-settled` 事件（只进日志、不进模型历史），可审计、可复盘。
 - **对话流卡片**：浏览器端为委派工具渲染状态卡片（实时状态徽章、依赖、人设、结果摘要、一键打开子会话），为花名册工具渲染表格视图。
-- **设置卡片**：设置 → 插件 → 插件配置里编辑默认子代理模型 / 默认 max tokens / 委派深度上限。
+- **设置卡片**：设置 → 插件 → 插件配置里编辑默认子代理模型 / 默认 max tokens / 委派深度上限 / 锁定默认模型。
 - **总开关**：`trackRuns: false` 一键回到纯委派模式（v0.2.x 行为）。
 
 ## 📦 安装
 
-前置要求：Node.js `^22.19` 或 `>=24`，已安装 DeepSeek Harness。
+前置要求：Node.js `^22.19` 或 `>=24`，已安装 DeepSeek Harness（dsh ≥ 0.1.1-rc.2）。
 
 **第 1 步 · 安装插件包：**
 
@@ -168,11 +168,13 @@ subagent_status()   # 查看所有委派的状态与 task_id
 
 ## 🛡️ 兼容性设计（防 dsh 升级失效）
 
+> 当前要求 **dsh ≥ 0.1.1-rc.2**：`settings.plugin.item` 为 keyed 插槽（旧版按 `id` 注册的 list 槽已不存在，v0.3.4 起按新契约注册）。
+
 1. **只用公开接缝**：`ctx.tools.register`、`ctx.subagents`（`start` / `startContinuable` / `listChildren` / `subagent/start|end` 事件）、`ctx.systemPrompt.section`、`ctx.settings`（可选读）、`ctx.webServer.register`、`Session.append`。不 import 内部模块。
 2. **依赖从宿主解析**：只声明 `peerDependencies`，运行时经 profile 的扁平 `node_modules` 解析到**当前安装的 dsh 自带版本**，不锁版本、不随包分发、不漂移。
 3. **镜像官方模式**：注册时机（provider 出现/移除）、前后台路由、stop-reason 处理、输出渲染与官方 `dsh-tool-subagent` 同构。
 4. **防御性解析**：设置节任何形状都不会让插件崩溃，最坏退化为继承行为。
-5. **客户端按能力探测**：toolview 卡片注册套 try/catch；`sessions` 服务走 `ctx.get()` 可选读取，缺失只隐藏"打开子会话"按钮。
+5. **客户端按能力探测**：toolview 卡片注册套 try/catch；设置卡片按 keyed 契约注册（自带 try/catch 防御）；`sessions` 服务走 `ctx.get()` 可选读取，缺失只隐藏"打开子会话"按钮。
 6. **失效方式明确**：接缝变更时加载 / 调用阶段报出可读错误，不静默出错。
 
 ## 🧪 开发与测试
