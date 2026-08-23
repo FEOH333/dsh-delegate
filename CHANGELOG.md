@@ -2,6 +2,13 @@
 
 本文件记录 dsh-delegate（npm 包名 `dsh-tool-subagent-model`）的版本历史与工程教训。
 
+## 0.3.4
+
+- **fix（适配 dsh 0.1.1-rc.2）**：`settings.plugin.item` 插槽从 list（按 `id` 注册）改为 keyed（按 `key` 注册），旧式 `{ id, order, locale }` 注册导致设置 → 插件列表里卡片不再出现。改为 `{ name, key: "subagent-model" }` 注册（与官方 shell / agent-loop 卡片同构），并加 try/catch 防御。
+- **deps**：设置卡片组件渲染语言回退改为内置中英字典（keyed 槽不再注入 locale 绑定的 `t`）。
+- **test**：`client-smoke.mjs` 断言改为新契约（`entry.key === "subagent-model"`，旧 `id` 字段必须为 `undefined`）；SSR 渲染改为从 react-dom 位置解析配套 react（顶层 react@18 与 react-dom@19 不同源的测试环境修复）。
+- host 侧接缝（tools / subagents / systemPrompt / webServer / settings / jobs / `subagent/start|end` / `settings/updated`）经审计与冒烟测试确认在新版无需改动。
+
 ## 0.3.3
 
 - **feat**：模型来源标注——注册表记录新增 `modelSource`（`arg` 显式指定 / `default` 默认值 / `inherited` 继承主模型），花名册与对话流卡片直接显示"这条为什么是这个模型"；审计事件同步携带。
