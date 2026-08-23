@@ -3,9 +3,9 @@
  *
  * Loads lib/client.js the way the web shell does (window.__ModuleLoader__
  * handoff), runs the factory with a stub require, then verifies the plugin
- * contract: the settings-card registration, the three toolview keys, and the
- * SSR-safe initial render of every card (no fetch during SSR, hooks are
- * inert).
+ * contract: the settings-page registration, the settings-card registration,
+ * the three toolview keys, and the SSR-safe initial render of every card
+ * (no fetch during SSR, hooks are inert).
  * Execute with:  node test/client-smoke.mjs  (from the package directory)
  */
 import assert from "node:assert/strict";
@@ -41,7 +41,7 @@ const mod = handoff.factory((spec) => {
 assert.ok(Array.isArray(mod.inject), "exports.inject must be an array");
 assert.equal(typeof mod.apply, "function");
 
-// ── plugin contract: settings card + three toolview registrations ───────────
+// ── plugin contract: plugin card + settings page + three toolviews ──────────
 
 const registered = [];
 /** Stubs for every declared service + the Cordis builtins apply() may touch. */
@@ -64,6 +64,10 @@ const stubs = {
 			// v0.3.3 keys exist in both dictionaries
 			assert.ok(dictionaries.zh.lockDefaultModel && dictionaries.en.lockDefaultModel);
 			assert.ok(dictionaries.zh.srcArg && dictionaries.zh.srcDefault && dictionaries.zh.srcInherited);
+		},
+		bind: (ns) => {
+			assert.equal(ns, "subagent-model");
+			return (key) => key; // the section label thunk resolves through this
 		}
 	},
 	slots: {
@@ -88,7 +92,7 @@ for (const name of mod.inject) {
 // the guard itself works — this is the assertion that would have caught the v0.3.0 bug
 assert.throws(() => ctx.sessions, /cannot get property "sessions" without inject/);
 mod.apply(ctx);
-assert.equal(registered.length, 4); // settings card + 3 toolview keys
+assert.equal(registered.length, 5); // plugin card + settings page + 3 toolview keys
 assert.equal(registered[0].name, "settings.plugin.item");
 const entry = registered[0].contribution();
 // settings.plugin.item is a KEYED slot since dsh 0.1.1-rc.2 — registration
@@ -97,9 +101,17 @@ assert.equal(entry.name, "settings.plugin.item");
 assert.equal(entry.key, "subagent-model");
 assert.equal(entry.id, undefined); // legacy list-slot field must be gone
 assert.equal(typeof entry.component, "function");
+assert.equal(registered[1].name, "settings.section");
+const section = registered[1].contribution();
+// settings.section is a plain LIST slot: id + order + label thunk (v0.3.6)
+assert.equal(section.name, "settings.section");
+assert.equal(section.id, "subagent-model");
+assert.equal(section.order, 18);
+assert.equal(typeof section.label, "function");
+assert.equal(typeof section.component, "function");
 
 // toolview keys claim exactly this plugin's tool names (open key domain)
-const toolviews = registered.slice(1);
+const toolviews = registered.slice(2);
 assert.ok(toolviews.every((injection) => injection.name === "tool.call.toolview"));
 const toolviewEntries = toolviews.map((injection) => injection.contribution());
 assert.deepEqual(toolviewEntries.map((view) => view.key), ["subagent_with_model", "subagent_fork_with_model", "subagent_status"]);
@@ -112,6 +124,12 @@ assert.match(html, /aria-expanded="false"/);
 assert.match(html, /title/); // the locale passthrough renders the entry keys
 assert.match(html, /description/);
 assert.doesNotThrow(() => ReactDOMServer.renderToStaticMarkup(React.createElement(entry.component, {})));
+
+// ── the dedicated settings page renders (SSR-safe, embeds the card) ─────────
+
+const sectionHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(section.component, {}));
+assert.match(sectionHtml, /aria-expanded="false"/); // the embedded card renders
+assert.match(sectionHtml, /子代理模型/); // the resolution falls back to the zh dictionary
 
 // ── the delegation toolview renders a settled run card (SSR-safe, no fetch) ─
 
