@@ -33,7 +33,7 @@
 - **任务花名册**：`subagent_status` 工具输出当前工作区的全部委派记录（task_id / 状态 / 模型 / 驻留活动 / 依赖链 / 结果摘要）。
 - **审计事件**：每次委派向会话日志追加 `subagent-model/run-started | run-settled` 事件（只进日志、不进模型历史），可审计、可复盘。
 - **对话流卡片**：浏览器端为委派工具渲染状态卡片（实时状态徽章、依赖、人设、结果摘要、一键打开子会话），为花名册工具渲染表格视图。
-- **设置页签 + 卡片**：设置侧栏「子代理模型」独立页签（v0.3.6，`settings.section` 注册即渲染），以及插件配置页内的设置卡片（命名空间机制）——双保险，任一失效都不影响调整配置。
+- **设置卡片**：设置 → 插件 → 插件配置里编辑默认子代理模型 / 默认 max tokens / 委派深度上限 / 锁定默认模型。
 - **总开关**：`trackRuns: false` 一键回到纯委派模式（v0.2.x 行为）。
 
 ## 📦 安装
@@ -134,7 +134,7 @@ subagent_status()   # 查看所有委派的状态与 task_id
 
 ## 🖥️ Web UI
 
-- **设置页签 + 卡片**：设置侧栏「子代理模型」页签（模型页与插件页之间）与 设置 → 插件 → 插件配置卡片：编辑默认模型 / 默认 max tokens / 委派深度上限 / 锁定默认模型。数据走插件自己的 `/api/subagent-model/*` 路由，写路由带 loopback + 同源信任围栏。
+- **设置页签 + 卡片**（设置 → 侧栏「子代理模型」页，以及 设置 → 插件 → 插件配置卡片）：编辑省略参数时的默认值（默认模型 / 默认 max tokens / 委派深度上限 / 锁定默认模型）。数据走插件自己的 `/api/subagent-model/*` 路由，写路由带 loopback + 同源信任围栏。
 - **委派卡片**：对话流中 `subagent_with_model` / `subagent_fork_with_model` 的工具调用渲染为状态卡（标签 / 模型 / 模型来源 / 状态徽章 / task / 依赖 / 人设折叠 / 结果摘要 / 打开子会话），2.5s 轮询花名册路由，状态终态后自动停止。
 - **花名册卡片**：`subagent_status` 工具调用渲染为实时表格视图。
 - 若未来 shell 缺少相关 slot / 服务，卡片自动降级（仅隐藏跳转按钮），不影响设置页签。
@@ -192,7 +192,7 @@ lib/
   config-store.js 用户默认值存储（原子写入，~/.dsh/subagent-model.json）
 scripts/
   verify.mjs      一键验证：语法检查 + 两套冒烟测试
-  test/
+test/
   smoke.mjs       宿主冒烟测试（真实 dsh-tools schema 校验 + 注入纪律 Proxy mock）
   client-smoke.mjs 客户端冒烟测试（web shell 加载方式 + SSR 渲染）
 ```
@@ -237,7 +237,7 @@ node test/client-smoke.mjs
 - **Dependency gating** via `task_id` / `depends_on` (deterministic ordering, refuses with the unsatisfied list);
 - **Per-child personas** (persisted and reapplied on continuable resume);
 - **A durable run roster** (`subagent_status` + `<workspace>/.dsh-subagents/runs.jsonl`) and typed audit events;
-- **Conversation-flow tool cards** (status badges, dependency detail, child-session navigation) plus a dedicated Settings page and a Settings card;
+- **Conversation-flow tool cards** (status badges, dependency detail, child-session navigation) plus a Settings card for defaults;
 - `trackRuns: false` restores plain delegation behavior.
 
 ```sh
