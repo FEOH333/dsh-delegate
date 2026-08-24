@@ -4,7 +4,7 @@
 >
 > Model-aware subagent delegation for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): per-call models, dependency gating, personas, a durable run roster, audit events, and conversation-flow tool cards.
 
-[![version](https://img.shields.io/badge/version-0.3.6-blue)](package.json)
+[![version](https://img.shields.io/badge/version-0.3.7-blue)](package.json)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![topic: dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-9cf)](https://github.com/topics/dsh-plugin)
 
@@ -177,6 +177,20 @@ subagent_status()   # 查看所有委派的状态与 task_id
 4. **防御性解析**：设置节任何形状都不会让插件崩溃，最坏退化为继承行为。
 5. **客户端按能力探测**：toolview 卡片注册套 try/catch；设置卡片按 keyed 契约注册（自带 try/catch 防御），host 注册 `subagent-model` 设置命名空间（新版插件配置页按命名空间分发卡片，v0.3.5）；另有**独立设置页签**（`settings.section` list 槽，注册即渲染，v0.3.6 双保险）；`sessions` 服务走 `ctx.get()` 可选读取，缺失只隐藏"打开子会话"按钮。
 6. **失效方式明确**：接缝变更时加载 / 调用阶段报出可读错误，不静默出错。
+
+## 🌐 dsh-std 生态适配（Experimental）
+
+本仓库携带符合 [dsh-std](https://github.com/Yan-Zero/dsh-std) Community v0.15 的 [`dsh-plugin.json`](dsh-plugin.json)（`manifestVersion: "0.15"`），并通过 [dsh-ecosystem-spec](https://github.com/T-Auto/dsh-ecosystem-spec) 的官方准入评估器验证：
+
+```sh
+# 在 dsh-ecosystem-spec 检出内：
+npm run validate:manifest -- --manifest /path/to/dsh-delegate/dsh-plugin.json
+# → {"valid":true,"decision":"compatible","missingOptional":[]}
+```
+
+- **实验适配声明**：规范当前为 Draft/Experimental，本插件以实验级身份参与，不宣称任何 Candidate/Stable 认证。
+- **声明闭包诚实**：插件未实现任何 dsh-std 公共协议（commands / messages / storage / presentation 均为空声明），其能力全部走 DSH 公开接缝（tools / subagents / `settings.section` / `tool.call.toolview`），通过宿主 adapter 层（如 [dsh-TUI](https://github.com/ccch1mneyyy/dsh-TUI) 的 `@dsh-std/adapter-dsh`）与生态共存——清单的 `x-experimental` 字段详细说明此边界。
+- **revision**：`source.revision` 指向清单生成时的仓库基线提交，随每个发布轮次更新，不代表 Verified claim（未生成 artifact digest）。
 
 ## 🧪 开发与测试
 
