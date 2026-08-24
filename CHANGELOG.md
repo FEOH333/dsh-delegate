@@ -2,6 +2,11 @@
 
 本文件记录 dsh-delegate（npm 包名 `dsh-tool-subagent-model`）的版本历史与工程教训。
 
+## 0.3.7
+
+- **feat（dsh-std 生态适配）**：新增 `dsh-plugin.json`（Community v0.15 Manifest，`manifestVersion: "0.15"`）。已通过 [dsh-ecosystem-spec](https://github.com/T-Auto/dsh-ecosystem-spec) 官方准入评估器（`npm run validate:manifest`）——结果为 `compatible`（valid, missingOptional 空）。插件按**实验适配（Experimental）**声明：不宣称实现任何 std 协议（commands/messages/storage/presentation 均未注册），通过宿主 adapter 层参与生态，详见 manifest `x-experimental` 说明。
+- 该清单使插件可被 dsh-TUI 生态（[dsh-TUI](https://github.com/ccch1mneyyy/dsh-TUI)、tui 插件市场）识别与装载。
+
 ## 0.3.6
 
 - **feat（设置配置双保险）**：除命名空间卡片外，新增**独立设置页签**（`settings.section` list 槽，id `subagent-model`，位于「模型」与「插件」页之间）——该槽注册即渲染、不依赖 namespace describe 机制，设置侧栏直接出现「子代理模型」页。无论哪种机制生效都能在设置里调整。
