@@ -1,0 +1,30 @@
+{
+  "$schema": "https://dsh.community/schemas/dsh-plugin-0.15.json",
+  "id": "io.github.feo333.dsh-delegate",
+  "name": "dsh-delegate",
+  "version": "0.3.7",
+  "manifestVersion": "0.15",
+  "facets": {
+    "host": {
+      "entry": "lib/index.js",
+      "apiVersion": "v1alpha1"
+    }
+  },
+  "requires": {
+    "contracts": []
+  },
+  "permissions": [],
+  "contributes": {
+    "commands": []
+  },
+  "subscriptions": [],
+  "license": "MIT",
+  "source": {
+    "repository": "https://github.com/FEOH333/dsh-delegate",
+    "revision": "91d827a366d16e230a534c76d48f74b6a1b5083e"
+  },
+  "x-experimental": {
+    "admission": "experimental",
+    "note": "dsh-std Community v0.15 experimental manifest. The plugin deliberately declares no dsh-std protocol requirements (commands/messages/storage/presentation): it is authored against the DSH public seams (tools, subagents, settings.section, tool.call.toolview) and participates through the host adapter layer, not through direct std protocol registration."
+  }
+}
