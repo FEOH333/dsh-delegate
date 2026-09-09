@@ -2,7 +2,7 @@
   "$schema": "https://dsh.community/schemas/dsh-plugin-0.15.json",
   "id": "io.github.feo333.dsh-delegate",
   "name": "dsh-delegate",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "manifestVersion": "0.15",
   "facets": {
     "host": {
