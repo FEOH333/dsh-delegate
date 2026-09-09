@@ -41,9 +41,27 @@ const mod = handoff.factory((spec) => {
 assert.ok(Array.isArray(mod.inject), "exports.inject must be an array");
 assert.equal(typeof mod.apply, "function");
 
+// ── package manifest: the client-modules loader contract ────────────────────
+// The loader requires `dsh.client.platform` ("web") plus `exports["./client"]`.
+// `dsh.client.inject` named `@deepseek-ai/dsh-client-runtime`, which no longer
+// ships with dsh (the loader skips a missing row-inject, so it was inert and
+// misleading) — dropped in v0.3.8, along with its peer dependency.
+const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+assert.equal(manifest.dsh.client.platform, "web");
+assert.equal(manifest.dsh.client.inject, undefined);
+assert.equal(manifest.exports["./client"], "./lib/client.js");
+assert.equal(manifest.peerDependencies["@deepseek-ai/dsh-client-runtime"], undefined);
+assert.ok(manifest.exports["."].endsWith("index.js"));
+
 // ── plugin contract: plugin card + settings page + three toolviews ──────────
 
 const registered = [];
+/** The optional sessions service, resolved lazily by the navigation helper. */
+const sessionsStub = {
+	subagentAddress: (childId) => ({ parentSessionId: "p", childSessionId: childId, mode: "child" }),
+	openSubagent: () => {}
+};
+let sessionsReads = 0;
 /** Stubs for every declared service + the Cordis builtins apply() may touch. */
 const stubs = {
 	// builtins (always available on a real Context)
@@ -54,7 +72,8 @@ const stubs = {
 	get: (name) => {
 		// optional-service accessor: this plugin reads only "sessions"
 		assert.equal(name, "sessions");
-		return undefined;
+		sessionsReads += 1;
+		return sessionsStub;
 	},
 	// declared services (mod.inject)
 	locale: {
@@ -92,6 +111,10 @@ for (const name of mod.inject) {
 // the guard itself works — this is the assertion that would have caught the v0.3.0 bug
 assert.throws(() => ctx.sessions, /cannot get property "sessions" without inject/);
 mod.apply(ctx);
+// v0.3.8: the optional sessions service is resolved per click, never captured
+// at apply time — a controller that activates later must not leave a dead
+// "open child session" button.
+assert.equal(sessionsReads, 0, "apply must not capture the optional sessions service");
 assert.equal(registered.length, 5); // plugin card + settings page + 3 toolview keys
 assert.equal(registered[0].name, "settings.plugin.item");
 const entry = registered[0].contribution();
@@ -176,5 +199,4 @@ assert.doesNotThrow(() => ReactDOMServer.renderToStaticMarkup(React.createElemen
 	cwd: "",
 	sessionId: ""
 })));
-
 console.log("client-smoke.mjs: all assertions passed");
