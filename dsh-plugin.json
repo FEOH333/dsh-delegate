@@ -21,7 +21,7 @@
   "license": "MIT",
   "source": {
     "repository": "https://github.com/FEOH333/dsh-delegate",
-    "revision": "91d827a366d16e230a534c76d48f74b6a1b5083e"
+    "revision": "0ecd93066a93cb4e58cc78fae6ab38596623c61e"
   },
   "x-experimental": {
     "admission": "experimental",
