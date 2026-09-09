@@ -7,18 +7,19 @@
  */
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	apply,
 	flattenProviders,
 	installEndListenerOnce,
+	readLiveEntries,
 	resetEndListenerForTesting,
 	resetSettingsSectionForTesting,
 	resolveRoute,
 	sameEntries
 } from "../lib/index.js";
-import { readUserConfig, setConfigPathForTesting, validateUserConfigPatch, writeUserConfig } from "../lib/config-store.js";
+import { readUserConfig, resetConfigPathForTesting, setConfigPathForTesting, validateUserConfigPatch, writeUserConfig, configPath } from "../lib/config-store.js";
 import { makeRoutes, registerRoutesOnce, resetRoutesOnceForTesting } from "../lib/routes.js";
 import {
 	childEntry,
@@ -73,7 +74,7 @@ const providers = {
 /** Session events appended by the plugin (audit trail). */
 const appendedEvents = [];
 
-function makeCtx({ sectionRef = { current: initialSection }, jobRegistry = undefined } = {}) {
+function makeCtx({ sectionRef = { current: initialSection }, jobRegistry = undefined, llmRegistry = undefined, headless = false } = {}) {
 	const bus = new Map();
 	const state = {
 		registrations: [],
@@ -87,9 +88,19 @@ function makeCtx({ sectionRef = { current: initialSection }, jobRegistry = undef
 		settingsRegistrations: []
 	};
 	const settings = { get: (ns) => (ns === "llm-pi-ai" ? sectionRef.current : undefined) };
+	const webServer = {
+		register: (route) => {
+			// Mirror the real webserver: duplicate (kind, path) throws.
+			const key = `${route.kind}:${route.path}`;
+			if (state.routeKeys.has(key)) throw new Error(`webserver: duplicate ${route.kind} route "${route.path}"`);
+			state.routeKeys.add(key);
+			state.routes.push(route);
+			return () => {};
+		}
+	};
 	const ctx = {
 		state,
-		get: (key) => (key === "settings" ? settings : key === "jobs" ? jobRegistry : undefined),
+		get: (key) => (key === "settings" ? settings : key === "jobs" ? jobRegistry : key === "llm" ? llmRegistry : key === "webServer" ? (headless ? undefined : webServer) : undefined),
 		// cordis builtin: dependency injection (installSettingsSection uses it)
 		inject: (deps, callback) => {
 			state.injectCalls.push({ deps, callback });
@@ -115,16 +126,7 @@ function makeCtx({ sectionRef = { current: initialSection }, jobRegistry = undef
 			get: (toolName) => state.registrations.find((definition) => definition.name === toolName)
 		},
 		systemPrompt: { section: (sectionDef) => state.sections.push(sectionDef) },
-		webServer: {
-			register: (route) => {
-				// Mirror the real webserver: duplicate (kind, path) throws.
-				const key = `${route.kind}:${route.path}`;
-				if (state.routeKeys.has(key)) throw new Error(`webserver: duplicate ${route.kind} route "${route.path}"`);
-				state.routeKeys.add(key);
-				state.routes.push(route);
-				return () => {};
-			}
-		},
+		webServer,
 		effect: (fn) => {
 			const result = fn();
 			return typeof result === "function" ? result : () => {};
@@ -174,6 +176,9 @@ const parent = {
 	session: {
 		id: "s1",
 		header: { cwd: wsA },
+		// The official inheritance seam reads the LATEST request header, so a
+		// mid-session model switch must be visible here.
+		requestHeader: () => ({ config: { provider: "provider-a", model: "model-fast" } }),
 		append: (type, data) => {
 			appendedEvents.push({ type, data });
 		}
@@ -187,6 +192,22 @@ const exec = { agent: parent, signal: new AbortController().signal };
 // `~/.dsh/subagent-model.json` — machine-dependent AND a config leak.
 const tempHome = mkdtempSync(join(tmpdir(), "subagent-model-test-"));
 setConfigPathForTesting(join(tempHome, ".dsh", "subagent-model.json"));
+
+// the store follows $DSH_HOME like the rest of the harness (`resolveDshHome`
+// precedence: non-blank $DSH_HOME > ~/.dsh), so a relocated harness home keeps
+// this plugin's user defaults beside it instead of under the OS home.
+resetConfigPathForTesting();
+const previousDshHome = process.env.DSH_HOME;
+const customHome = mkdtempSync(join(tmpdir(), "subagent-model-home-"));
+process.env.DSH_HOME = customHome;
+assert.equal(configPath(), join(customHome, "subagent-model.json"));
+process.env.DSH_HOME = "   "; // blank means unset, never the cwd
+assert.equal(configPath(), join(homedir(), ".dsh", "subagent-model.json"));
+process.env.DSH_HOME = "~/nested-home";
+assert.equal(configPath(), join(homedir(), "nested-home", "subagent-model.json"));
+if (previousDshHome === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previousDshHome;
+setConfigPathForTesting(join(tempHome, ".dsh", "subagent-model.json"));
+rmSync(customHome, { recursive: true, force: true });
 
 // ── pure helpers ────────────────────────────────────────────────────────────
 
@@ -277,6 +298,14 @@ await def.execute({ description: "inherit", prompt: "task", run_in_background: f
 assert.deepEqual(ctx.state.starts[1].request.agentOptions, { provider: "provider-a", model: "model-fast" });
 assert.equal(listRuns(parent.session.header.cwd, ".dsh-subagents").at(-1).modelSource, "inherited");
 
+// inheritance follows the SESSION's current route, not the creation-time
+// options: a mid-session model switch must reach the child
+// (official `parentAgentOptionsForDelegation` seam).
+parent.session.requestHeader = () => ({ config: { provider: "provider-b", model: "model-pro" } });
+await def.execute({ description: "inherit-after-switch", prompt: "task", run_in_background: false }, exec);
+assert.deepEqual(ctx.state.starts.at(-1).request.agentOptions, { provider: "provider-b", model: "model-pro" });
+parent.session.requestHeader = () => ({ config: { provider: "provider-a", model: "model-fast" } });
+
 // persona passes through when the provider supports it
 await def.execute({ description: "persona", prompt: "task", persona: "You are a reviewer", run_in_background: false }, exec);
 assert.equal(ctx.state.starts.at(-1).request.persona, "You are a reviewer");
@@ -364,6 +393,88 @@ assert.deepEqual(result.output, [{ type: "text", text: "done" }]);
 assert.deepEqual(ctx4.state.starts.at(-1).request.agentOptions, { provider: "provider-a", model: "model-fast" });
 // and the schema healed for the next call
 assert.deepEqual(ctx4.state.registrations[0].parameters.properties.model.enum, ["model-fast", "model-pro"]);
+
+// ── live catalog from the `llm` service (dsh 0.1.2 route truth) ─────────────
+// The `llm-pi-ai` settings section is only ONE adapter family; a deployment can
+// serve every route from another family (e.g. llm-deepseek), where the section
+// is absent and the old settings-only catalog left the `model` enum empty and
+// silently routed explicit ids to the parent's route.
+
+const liveRoutes = {
+	listProviders: async () => [{ id: "route-live", name: "Live" }, { id: "route-broken", name: "Broken" }],
+	listModels: async (route) => {
+		if (route === "route-broken") throw new Error("adapter unavailable");
+		return [{ id: "live-model", name: "Live Model" }, { id: "model-fast", name: "Fast (live)" }];
+	}
+};
+
+// unit: live read shape, absent service, and one throwing route
+assert.deepEqual(await readLiveEntries(makeCtx({ llmRegistry: liveRoutes })), [
+	{ provider: "route-live", model: "live-model", label: "Live Model" },
+	{ provider: "route-live", model: "model-fast", label: "Fast (live)" }
+]);
+assert.deepEqual(await readLiveEntries(makeCtx()), []);
+assert.deepEqual(await readLiveEntries(makeCtx({ llmRegistry: { listProviders: async () => { throw new Error("no llm"); } } })), []);
+
+// the live catalog replaces the settings-section one and resolves real routes
+const liveSection = { current: { providers: { "stale-route": { models: [{ id: "stale-model" }] } } } };
+const ctxLive = makeCtx({ llmRegistry: liveRoutes, sectionRef: liveSection });
+apply(ctxLive, { provider: "spawn", toolName: "subagent_live", backgroundMode: "continuable", maxDepth: 3 });
+const liveDef = () => ctxLive.state.registrations.find((definition) => definition.name === "subagent_live");
+assert.deepEqual(liveDef().parameters.properties.model.enum, ["stale-model"]); // sync boot read
+await new Promise((resolve) => setTimeout(resolve, 20)); // the async live read lands
+assert.deepEqual(liveDef().parameters.properties.model.enum, ["live-model", "model-fast"]);
+assert.deepEqual(liveDef().parameters.properties.provider.enum, ["route-live"]);
+// an explicit live model now routes to the provider that actually serves it,
+// instead of falling through to the parent's route
+await liveDef().execute({ description: "live", prompt: "x", model: "live-model", run_in_background: false }, exec);
+assert.deepEqual(ctxLive.state.starts.at(-1).request.agentOptions, { provider: "route-live", model: "live-model" });
+
+// a deployment whose live routes advertise nothing still uses the settings section
+const ctxFallback = makeCtx({ llmRegistry: { listProviders: async () => [], listModels: async () => [] }, sectionRef: { current: { providers: { "only-route": { models: [{ id: "only-model" }] } } } } });
+apply(ctxFallback, { provider: "spawn", toolName: "subagent_fallback", backgroundMode: "continuable", maxDepth: 3 });
+await new Promise((resolve) => setTimeout(resolve, 20));
+const fallbackDef = ctxFallback.state.registrations.find((definition) => definition.name === "subagent_fallback");
+assert.deepEqual(fallbackDef.parameters.properties.model.enum, ["only-model"]);
+assert.deepEqual(fallbackDef.parameters.properties.provider.enum, ["only-route"]);
+
+// a settings change re-reads both sources
+liveRoutes.listModels = async () => [{ id: "live-model-2", name: "Live Model 2" }];
+ctxLive.emit("settings/updated", "llm-deepseek");
+await new Promise((resolve) => setTimeout(resolve, 20));
+assert.deepEqual(liveDef().parameters.properties.model.enum, ["live-model-2"]);
+
+// the provider-topology event (an adapter registering/unregistering routes) is
+// the authoritative trigger for a live re-read
+liveRoutes.listProviders = async () => [{ id: "route-live", name: "Live" }];
+liveRoutes.listModels = async () => [{ id: "live-model-3", name: "Live Model 3" }];
+ctxLive.emit("llm/adapters-updated");
+await new Promise((resolve) => setTimeout(resolve, 20));
+assert.deepEqual(liveDef().parameters.properties.model.enum, ["live-model-3"]);
+
+// an unrelated settings namespace must not rebuild the tool
+const disposedLive = ctxLive.state.disposed;
+ctxLive.emit("settings/updated", "ui-theme");
+await new Promise((resolve) => setTimeout(resolve, 20));
+assert.equal(ctxLive.state.disposed, disposedLive);
+
+// ── settings namespace registers even when the service arrives late ─────────
+// Profile rows mount concurrently and the settings provider's async init can
+// still be in flight when a row applies, so `ctx.get("settings")` is undefined
+// there. A presence guard would bail out forever and the namespace would never
+// be served — the Settings > Plugins card silently disappears (the live
+// 0.1.2-rc.1 regression). `ctx.inject` must be the only gate.
+resetSettingsSectionForTesting();
+const lateCtx = makeCtx();
+const baseGet = lateCtx.get;
+lateCtx.get = (key) => (key === "settings" ? undefined : baseGet(key));
+apply(lateCtx, { provider: "spawn", toolName: "subagent_late_settings", backgroundMode: "continuable", maxDepth: 3 });
+assert.equal(lateCtx.state.injectCalls.length, 1); // the plugin waited for the service
+assert.equal(lateCtx.state.settingsRegistrations.length, 1);
+assert.equal(lateCtx.state.settingsRegistrations[0].ns, "subagent-model");
+// the row's own tools are unaffected by the late service
+assert.ok(lateCtx.state.registrations.some((definition) => definition.name === "subagent_late_settings"));
+resetSettingsSectionForTesting();
 
 // ── config store + routes + user-default integration ────────────────────────
 
@@ -607,6 +718,10 @@ const operation = captured.spec.run();
 const outcome = await operation.done;
 assert.equal(outcome.status, "completed");
 assert.equal(listRuns(wsD, ".dsh-subagents").find((record) => record.taskId === "t-j").status, "completed");
+// regression: the official settleRun returns the final text as a JOINED STRING
+// (runOutcome → finalText), not content blocks — a blocks-only summary reader
+// silently recorded an empty summary for every background run.
+assert.equal(listRuns(wsD, ".dsh-subagents").find((record) => record.taskId === "t-j").summary, "done");
 
 // ── roster tool output ───────────────────────────────────────────────────────
 
@@ -640,6 +755,20 @@ await ctxM.state.registrations[0].execute({ description: "m", prompt: "x", task_
 assert.ok(!existsSync(join(wsE, "runs.jsonl")), "memory-only mode must not create files");
 assert.equal(listRuns(wsE, "").find((record) => record.taskId === "t-m").status, "completed");
 rmSync(wsE, { recursive: true, force: true });
+
+// ── headless / TUI profile: no webServer must not block the tools ───────────
+// Cordis defers a row until every injected service exists, so injecting
+// `webServer` would keep the delegation tools from ever mounting where no web
+// server is composed (headless, TUI). The route family is the browser card's
+// transport only and must be optional.
+resetRoutesOnceForTesting();
+resetStatusToolForTesting();
+const ctxHeadless = makeCtx({ headless: true });
+apply(ctxHeadless, { provider: "spawn", toolName: "subagent_headless", backgroundMode: "continuable", maxDepth: 3 });
+assert.ok(ctxHeadless.state.registrations.some((definition) => definition.name === "subagent_headless"), "delegation tool must mount without a web server");
+assert.ok(ctxHeadless.state.registrations.some((definition) => definition.name === "subagent_status"), "roster tool must mount without a web server");
+assert.equal(ctxHeadless.state.routes.length, 0); // no browser surface to serve
+resetRoutesOnceForTesting();
 
 // clear user defaults so the file's defaults do not leak into nothing else
 writeUserConfig({ defaultModel: null, defaultMaxTokens: null, maxDepth: null });
