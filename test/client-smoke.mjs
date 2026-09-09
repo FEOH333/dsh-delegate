@@ -199,4 +199,5 @@ assert.doesNotThrow(() => ReactDOMServer.renderToStaticMarkup(React.createElemen
 	cwd: "",
 	sessionId: ""
 })));
+
 console.log("client-smoke.mjs: all assertions passed");
