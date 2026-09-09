@@ -69,7 +69,7 @@
 - **feat**：`subagent_status` 花名册工具（task_id / 状态 / 模型 / 驻留活动 / 依赖链 / 摘要）。
 - **feat**：`task_id` / `depends_on` 依赖门控（未满足依赖拒绝启动并列出明细）。
 - **feat**：`persona` 角色人设参数（随 descriptor 持久化，冷恢复重应用；提供商不支持时显式报错）。
-- **feat**：工作区级运行注册表（`<workspace>/.dsh-subagents/runs.jsonl`，追加式 JSONL + last-write-wins 折叠 + 400 行压缩 + 400 行压缩 + 内存回退）。
+- **feat**：工作区级运行注册表（`<workspace>/.dsh-subagents/runs.jsonl`，追加式 JSONL + last-write-wins 折叠 + 400 行压缩 + 内存回退）。
 - **feat**：`subagent-model/run-started | run-settled` 会话审计事件（只进日志、不进模型历史）。
 - **feat**：客户端 `tool.call.toolview` 委派卡片与花名册卡片（轮询 runs 路由、终态停止、子会话跳转）。
 - **feat**：配置项 `stateDir` / `statusToolName` / `trackRuns`（全部带默认值，`trackRuns: false` 回退 v0.2.x 行为）。
