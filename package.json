@@ -1,7 +1,7 @@
 {
   "name": "dsh-tool-subagent-model",
-  "version": "0.3.7",
-  "description": "dsh-delegate: model-aware subagent delegation for DeepSeek Harness — per-call models, depends_on dependency gating, per-child personas, a durable run roster (subagent_status), audit events, and conversation-flow tool cards.",
+  "version": "0.3.8",
+  "description": "dsh-delegate: model-aware subagent delegation for DeepSeek Harness 鈥?per-call models, depends_on dependency gating, per-child personas, a durable run roster (subagent_status), audit events, and conversation-flow tool cards.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -29,14 +29,10 @@
   },
   "dsh": {
     "client": {
-      "inject": [
-        "@deepseek-ai/dsh-client-runtime"
-      ],
       "platform": "web"
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-client-runtime": "*",
     "@deepseek-ai/dsh-settings": "*",
     "@deepseek-ai/dsh-subagent": "*",
     "@deepseek-ai/dsh-tools": "*",
