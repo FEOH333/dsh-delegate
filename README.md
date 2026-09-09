@@ -4,7 +4,7 @@
 >
 > Model-aware subagent delegation for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): per-call models, dependency gating, personas, a durable run roster, audit events, and conversation-flow tool cards.
 
-[![version](https://img.shields.io/badge/version-0.3.7-blue)](package.json)
+[![version](https://img.shields.io/badge/version-0.3.8-blue)](package.json)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![topic: dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-9cf)](https://github.com/topics/dsh-plugin)
 
@@ -25,7 +25,7 @@
 
 ## ✨ 功能一览
 
-- **按次选模型**：`model` 参数枚举来自 Web「模型」页的模型目录，`provider` 自动路由（优先主 agent 路由，唯一路由自动选中，多路由歧义时显式报错并列出选项）；模型列表随设置热更新。优先级：调用参数 > 设置默认值 > 继承主模型。
+- **按次选模型**：`model` 参数枚举来自**当前真正可路由的提供商路由**（`ctx.llm` 的 `listProviders()` + `listModels()`，部署无关），`provider` 自动路由（优先主 agent 路由，唯一路由自动选中，多路由歧义时显式报错并列出选项）；模型列表随设置与适配器拓扑热更新。优先级：调用参数 > 设置默认值 > 继承主模型。
 - **模型来源标注**（v0.3.3+）：花名册与对话流卡片直接标注每条委派的模型来源（`arg` 显式指定 / `default` 默认值 / `inherited` 继承），一眼看出"为什么是这个模型"。
 - **锁定默认模型**（v0.3.3+）：设置卡片开关或行配置 `lockDefaultModel`——开启且配置了默认模型时，忽略每次调用指定的 `model`，强制使用默认值（结果会带 `note` 提示）。
 - **依赖门控**：`task_id` 命名一次委派，`depends_on` 声明依赖——依赖未满足时工具**拒绝启动**并列出未满足项（含当前状态），把"按顺序执行"变成确定性约束。
@@ -38,7 +38,7 @@
 
 ## 📦 安装
 
-前置要求：Node.js `^22.19` 或 `>=24`，已安装 DeepSeek Harness（dsh ≥ 0.1.1-rc.2）。
+前置要求：Node.js `^22.19` 或 `>=24`，已安装 DeepSeek Harness（dsh ≥ 0.1.1-rc.2；**0.1.2-rc.1 已实测适配**）。
 
 **第 1 步 · 安装插件包：**
 
@@ -146,6 +146,7 @@ subagent_status()   # 查看所有委派的状态与 task_id
         │
         ├─ 依赖门控：depends_on 全部满足才放行（否则报错列出未满足项）
         ├─ 路由解析：model/provider → 提供商路由（自动，歧义显式报错）
+        │    └─ 目录来源：ctx.llm listProviders/listModels（实时可路由）→ 回退 llm-pi-ai 设置节
         ├─ 启动：subagents.start / startContinuable（官方公开接缝）
         ├─ 注册表：<workspace>/.dsh-subagents/runs.jsonl 追加记录（锁内读写）
         ├─ 审计：parent.session.append('subagent-model/run-started', …)
@@ -169,13 +170,18 @@ subagent_status()   # 查看所有委派的状态与 task_id
 
 ## 🛡️ 兼容性设计（防 dsh 升级失效）
 
-> 当前要求 **dsh ≥ 0.1.1-rc.2**：`settings.plugin.item` 为 keyed 插槽（旧版按 `id` 注册的 list 槽已不存在，v0.3.4 起按新契约注册；`settings.section` 页签为 list 槽，v0.3.6 双保险）。
+> 当前要求 **dsh ≥ 0.1.1-rc.2**，并已针对 **0.1.2-rc.1** 实测适配：
+>
+> - `settings.plugin.item` 为 keyed 插槽（旧版按 `id` 注册的 list 槽已不存在，v0.3.4 起按新契约注册；`settings.section` 页签为 list 槽，v0.3.6 双保险）；
+> - 0.1.2-rc.1 移除了 `@deepseek-ai/dsh-settings` 的 `installSettingsSection` / `settingsNamespace` 导出——静态 import 会在加载阶段抛 `SyntaxError` 并**中断整个 profile 启动**。v0.3.8 改为直接调用底层公开接缝 `ctx.inject(['settings'], sctx => sctx.settings.register(ns, schema, { base }))`（旧包装器的内部实现，签名跨两个版本未变）；
+> - 模型目录不再绑定 `llm-pi-ai` 设置节，而是优先读 `ctx.llm` 的实时可路由路由（v0.3.8），因此 `llm-deepseek` 或自定义适配器的部署同样能列出模型；
+> - 设置命名空间注册只用 `ctx.inject` 等待服务（不再用 `ctx.get` 预检），避免并发挂载时命名空间永久缺失（v0.3.8）。
 
-1. **只用公开接缝**：`ctx.tools.register`、`ctx.subagents`（`start` / `startContinuable` / `listChildren` / `subagent/start|end` 事件）、`ctx.systemPrompt.section`、`ctx.settings`（可选读）、`ctx.webServer.register`、`Session.append`。不 import 内部模块。
+1. **只用公开接缝**：`ctx.tools.register`、`ctx.subagents`（`start` / `startContinuable` / `listChildren` / `subagent/start|end` 事件）、`ctx.llm`（可选读 `listProviders` / `listModels`）、`ctx.systemPrompt.section`、`ctx.settings`（可选读 / `ctx.inject` 注册）、`ctx.webServer.register`（可选，仅浏览器卡片）、`Session.append`、`llm/adapters-updated` 事件。不 import 内部模块。`inject` 只声明 `tools` / `subagents` / `systemPrompt`——`webServer` 不注入，否则 headless / TUI profile 里整行永不激活、委派工具根本不挂载。
 2. **依赖从宿主解析**：只声明 `peerDependencies`，运行时经 profile 的扁平 `node_modules` 解析到**当前安装的 dsh 自带版本**，不锁版本、不随包分发、不漂移。
 3. **镜像官方模式**：注册时机（provider 出现/移除）、前后台路由、stop-reason 处理、输出渲染与官方 `dsh-tool-subagent` 同构。
 4. **防御性解析**：设置节任何形状都不会让插件崩溃，最坏退化为继承行为。
-5. **客户端按能力探测**：toolview 卡片注册套 try/catch；设置卡片按 keyed 契约注册（自带 try/catch 防御），host 注册 `subagent-model` 设置命名空间（新版插件配置页按命名空间分发卡片，v0.3.5）；另有**独立设置页签**（`settings.section` list 槽，注册即渲染，v0.3.6 双保险）；`sessions` 服务走 `ctx.get()` 可选读取，缺失只隐藏"打开子会话"按钮。
+5. **客户端按能力探测**：toolview 卡片注册套 try/catch；设置卡片按 keyed 契约注册（自带 try/catch 防御），host 注册 `subagent-model` 设置命名空间（新版插件配置页按命名空间分发卡片，v0.3.5）；另有**独立设置页签**（`settings.section` list 槽，注册即渲染，v0.3.6 双保险）；`sessions` 服务走 `ctx.get()` **每次点击时**可选读取（v0.3.8 起不再在 apply 时捕获，避免控制器晚激活导致按钮永久失效），缺失只隐藏"打开子会话"按钮；清单只声明 loader 必需契约（`dsh.client.platform: "web"` + `exports["./client"]`）。
 6. **失效方式明确**：接缝变更时加载 / 调用阶段报出可读错误，不静默出错。
 
 ## 🌐 dsh-std 生态适配（Experimental）
@@ -203,7 +209,7 @@ lib/
   status-tool.js  花名册工具（进程级 single-flight）
   events.js       会话审计事件（含失败遏制）
   routes.js       /api/subagent-model/* 路由族（single-flight + 信任围栏）
-  config-store.js 用户默认值存储（原子写入，~/.dsh/subagent-model.json）
+  config-store.js 用户默认值存储（原子写入，`$DSH_HOME/subagent-model.json`，默认 `~/.dsh`）
 scripts/
   verify.mjs      一键验证：语法检查 + 两套冒烟测试
 test/
@@ -245,7 +251,7 @@ node test/client-smoke.mjs
 
 `dsh-delegate` (npm package: `dsh-tool-subagent-model`) extends the official `subagent` / `subagent_fork` tools for DeepSeek Harness with:
 
-- **Per-call model choice** with automatic provider routing, sourced from the web Models page;
+- **Per-call model choice** with automatic provider routing, sourced from the **live routable routes** (`ctx.llm.listProviders()` / `listModels()`), so any adapter family — `llm-pi-ai`, `llm-deepseek`, custom — works; the `llm-pi-ai` settings section is only a fallback;
 - **Model provenance labels** (`arg` / `default` / `inherited`) in the roster and tool cards;
 - **Lockable default model** (Settings card switch or `lockDefaultModel` row config) that overrides per-call `model` when a default is configured;
 - **Dependency gating** via `task_id` / `depends_on` (deterministic ordering, refuses with the unsatisfied list);
@@ -253,6 +259,8 @@ node test/client-smoke.mjs
 - **A durable run roster** (`subagent_status` + `<workspace>/.dsh-subagents/runs.jsonl`) and typed audit events;
 - **Conversation-flow tool cards** (status badges, dependency detail, child-session navigation) plus a Settings card for defaults;
 - `trackRuns: false` restores plain delegation behavior.
+
+Verified against dsh **0.1.2-rc.1**: the `@deepseek-ai/dsh-settings` wrapper exports (`installSettingsSection`, `settingsNamespace`) were removed there, so v0.3.8 calls the underlying public seam (`ctx.inject(['settings'], sctx => sctx.settings.register(ns, schema, { base }))`) instead of statically importing them — the old import was a link-time `SyntaxError` that aborted the whole profile boot. Settings-namespace registration also no longer pre-checks `ctx.get('settings')`, which raced concurrent row mounting and could silently drop the namespace forever.
 
 ```sh
 dsh plugin --profile web add github:FEOH333/dsh-delegate
