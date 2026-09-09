@@ -1,5 +1,7 @@
 # dsh-delegate 🐋
 
+> ⚠️ **暂停维护 / DEPRECATED（2026-09）**：DeepSeek Harness 官方已原生提供 **Subagent 模型选择**——设置中可为 Agent 授权「为每个 Subagent 选择提供方、模型与推理强度」（仅影响新会话）。本插件的核心功能（按次选模型）已被官方覆盖。本仓库进入**仅存档状态**：不再新增功能、不再适配新版本；已有版本与全部文档保留供参考。感谢所有使用者与贡献者 🐋
+
 > **模型感知的子代理委派工具包** — 给 DeepSeek Harness 的 `subagent` / `subagent_fork` 加上：按次选模型、依赖门控、角色人设、任务花名册、审计事件与对话流卡片。
 >
 > Model-aware subagent delegation for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): per-call models, dependency gating, personas, a durable run roster, audit events, and conversation-flow tool cards.
